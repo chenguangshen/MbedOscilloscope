@@ -7,8 +7,9 @@ import sys
 import os
 from Tkinter import *
 
-freq = 1000
-buffersize = 200
+freq = 200
+buffersize = 20
+datasize = 100
 pinflag = [0] * 6
 serdev = '/dev/tty.usbmodemfa132'
 mbed = serial.Serial(port=serdev, baudrate=115200)
@@ -31,12 +32,16 @@ class DataGen(object):
 def plot_update():
     global data
     global tempdata
-    global freq
-    data = np.append(data, tempdata)
-    xmax = len(data) if len(data) > freq else freq
-    xmin = xmax - freq
-    ymin = -3
-    ymax = 3
+    global datasize
+    global buffersize
+    if len(data) <= datasize - buffersize:
+        data = np.append(data, tempdata)
+    else:
+        data = np.append(data[buffersize - 1:], tempdata)
+    xmax = datasize
+    xmin = 0
+    ymin = 0
+    ymax = 3.5
     ax.set_xbound(lower=xmin, upper=xmax)
     ax.set_ybound(lower=ymin, upper=ymax)
     plot_data.set_xdata(np.arange(len(data)))
@@ -48,15 +53,14 @@ def update_data():
     global tempdata
     global count
     if count < buffersize:
-        #print(count)
-        tempdata[count] = int(datagen.next()) / 1023.0 * 3.3
+        tempdata[count] = int(datagen.next()) / 65536.0 * 3.3
         count = count + 1
     else:
         #print(tempdata)
         plot_update()
         tempdata = [None] * buffersize
         count = 0
-        
+
 def getPinNum(newpin):
     numpin = -1
     if (newpin == 'p15'):
@@ -98,9 +102,9 @@ def printAnswer():
     else:
         answer = answer + '     pin19: on;\n'
     if pinflag[5] == 0:
-        answer = answer + '     pin20: off;\n'
+        answer = answer + '     pin20: off.'
     else:
-        answer = answer + '     pin20: on;\n'
+        answer = answer + '     pin20: on.'
     print(answer)
 
 def userInput():
@@ -109,6 +113,7 @@ def userInput():
     global data
     global buffersize
     global pinflag
+    global datasize
     while (1):
         usercmd = raw_input("mbed>")
         if usercmd == 'exit':
@@ -127,13 +132,13 @@ def userInput():
                 mbed.flush()
                 mbed.write(chr(numpin))
                 mbed.flush()
+                if numpin == 7:
+                    pinflag = [1] * 6
+                else:
+                    pinflag[numpin - 1] = 1
+                printAnswer()
             else:
                 print('Please specify correct pin to sample: p15-p20, or all')
-            if numpin == 7:
-                pinflag = [1] * 6
-            else:
-                pinflag[numpin - 1] = 1
-            printAnswer()
         elif usercmd.startswith('freq'):
             newfreq = usercmd[5:]
             if (newfreq.isdigit()):
@@ -150,9 +155,13 @@ def userInput():
                     mbed.flush()
                     mbed.write(chr(freq % 10))
                     mbed.flush()
-                    plot_update()
-                    count = 0;
-                    buffersize = freq / 5;
+                    #plot_update()
+                    count = 0
+                    datasize = freq / 2
+#                    if freq >= 10:
+#                        buffersize = freq / 5
+#                    else:
+#                        buffersize = 5
                     tempdata = [None] * buffersize                   
                     print('Change frequency to be ' + str(freq) + 'Hz')
                 else:
@@ -194,9 +203,12 @@ def userInput():
                 mbed.flush()
             else:
                 print('Please specify correct pin to plot: p15-p20')
+        elif usercmd == ('status'):
+            printAnswer()
         elif usercmd != '':
             print(usercmd + ': invalid command.')
-            
+
+        
 fig = plt.figure()
 ax = fig.add_subplot(1, 1, 1)
 ax.grid(True)
@@ -204,9 +216,8 @@ datagen = DataGen()
 data = [None]
 ax.set_title('Sampling LPC11u24')
 ax.set_ylabel('Voltage')
-ax.set_xlabel('Time')
 ax.set_xlim([0, 50])
-ax.set_ylim([0, 3.3])
+ax.set_ylim([0, 3.5])
 tempdata = [None] * buffersize
 count = 0
 plot_data = ax.plot(data, linewidth=2, color=(0, 0, 1),)[0]
@@ -220,3 +231,4 @@ t = Thread(target=userInput, args=())
 t.start()
 
 plt.show()
+
